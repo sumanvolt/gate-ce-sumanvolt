@@ -927,64 +927,42 @@
   });
 
   /* ---------------------------------------------------------
-     13. PWA INSTALL PROMPT — button is visible from the start.
-         Uses the native prompt when Chrome/Edge/Android offer it;
-         otherwise falls back to manual per-platform instructions
-         (iOS Safari and some browsers never fire beforeinstallprompt
-         at all, so the button must still do something useful).
+     13. PWA INSTALL PROMPT
   --------------------------------------------------------- */
   let deferredPrompt = null;
-  const installBtn = document.getElementById('install-btn');
-  const installHelpModal = document.getElementById('install-help-modal');
-  const installHelpBody = document.getElementById('install-help-body');
+  const installBanner = document.getElementById('install-banner');
 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
+    if (!localStorage.getItem('sumanvolt_install_dismissed') && !isStandalone()) {
+      installBanner.classList.remove('hidden');
+    }
   });
 
-  function detectPlatformInstructions() {
-    const ua = navigator.userAgent || '';
-    const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    const isAndroid = /Android/.test(ua);
-    const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
-
-    if (isIOS && isSafari) {
-      return 'Tap the SHARE icon (square with an arrow) in Safari\'s toolbar, then choose "ADD TO HOME SCREEN".';
+  document.getElementById('install-btn').addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    if (choice.outcome === 'accepted') {
+      installBanner.classList.add('hidden');
     }
-    if (isAndroid) {
-      return 'Open the browser menu (⋮) and choose "ADD TO HOME SCREEN" or "INSTALL APP".';
-    }
-    return 'Open your browser menu and look for "INSTALL SUMANVOLT" or "ADD TO HOME SCREEN". In Chrome/Edge, check the install icon (⊕) in the address bar.';
-  }
-
-  installBtn.addEventListener('click', async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      if (choice.outcome === 'accepted') installBtn.classList.add('hidden');
-      deferredPrompt = null;
-      return;
-    }
-    // No native prompt available (iOS, unsupported browser, or criteria not yet met) — show manual steps.
-    installHelpBody.textContent = detectPlatformInstructions();
-    installHelpModal.classList.remove('hidden');
+    deferredPrompt = null;
   });
 
-  document.getElementById('install-help-close').addEventListener('click', () => {
-    installHelpModal.classList.add('hidden');
+  document.getElementById('install-dismiss').addEventListener('click', () => {
+    installBanner.classList.add('hidden');
+    localStorage.setItem('sumanvolt_install_dismissed', '1');
   });
 
   window.addEventListener('appinstalled', () => {
-    installBtn.classList.add('hidden');
+    installBanner.classList.add('hidden');
     deferredPrompt = null;
   });
 
   function isStandalone() {
     return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   }
-  if (isStandalone()) installBtn.classList.add('hidden');
-
   /* ---------------------------------------------------------
      14. SERVICE WORKER REGISTRATION
   --------------------------------------------------------- */
