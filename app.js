@@ -927,42 +927,85 @@
   });
 
   /* ---------------------------------------------------------
-     13. PWA INSTALL PROMPT
+     13. PWA INSTALL PROMPT — button is visible from the start.
+         Uses the native prompt when Chrome/Edge/Android offer it;
+         otherwise falls back to manual per-platform instructions
+         (iOS Safari and some browsers never fire beforeinstallprompt
+         at all, so the button must still do something useful).
   --------------------------------------------------------- */
   let deferredPrompt = null;
-  const installBanner = document.getElementById('install-banner');
+  const installBtn = document.getElementById('install-btn');
+  const installHelpModal = document.getElementById('install-help-modal');
+  const installHelpBody = document.getElementById('install-help-body');
 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    if (!localStorage.getItem('sumanvolt_install_dismissed') && !isStandalone()) {
-      installBanner.classList.remove('hidden');
-    }
   });
 
-  document.getElementById('install-btn').addEventListener('click', async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const choice = await deferredPrompt.userChoice;
-    if (choice.outcome === 'accepted') {
-      installBanner.classList.add('hidden');
+  function detectPlatformInstructions() {
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isAndroid = /Android/.test(ua);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+
+    if (isIOS && isSafari) {
+      return 'Tap the SHARE icon (square with an arrow) in Safari\'s toolbar, then choose "ADD TO HOME SCREEN".';
     }
-    deferredPrompt = null;
+    if (isAndroid) {
+      return 'Open the browser menu (⋮) and choose "ADD TO HOME SCREEN" or "INSTALL APP".';
+    }
+    return 'Open your browser menu and look for "INSTALL SUMANVOLT" or "ADD TO HOME SCREEN". In Chrome/Edge, check the install icon (⊕) in the address bar.';
+  }
+
+  installBtn.addEventListener('click', async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice.outcome === 'accepted') installBtn.classList.add('hidden');
+      deferredPrompt = null;
+      return;
+    }
+
+    // beforeinstallprompt sometimes fires a beat late — give it a short
+    // grace window before falling back to manual instructions.
+    installBtn.disabled = true;
+    const originalLabel = installBtn.textContent;
+    installBtn.textContent = '⚡ CHECKING…';
+
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    installBtn.disabled = false;
+    installBtn.textContent = originalLabel;
+
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice.outcome === 'accepted') installBtn.classList.add('hidden');
+      deferredPrompt = null;
+      return;
+    }
+
+    // Still nothing — this device/browser genuinely isn't offering a native
+    // install prompt right now (not HTTPS, already installed, iOS Safari,
+    // or engagement criteria not met yet). Show manual steps instead.
+    installHelpBody.textContent = detectPlatformInstructions();
+    installHelpModal.classList.remove('hidden');
   });
 
-  document.getElementById('install-dismiss').addEventListener('click', () => {
-    installBanner.classList.add('hidden');
-    localStorage.setItem('sumanvolt_install_dismissed', '1');
+  document.getElementById('install-help-close').addEventListener('click', () => {
+    installHelpModal.classList.add('hidden');
   });
 
   window.addEventListener('appinstalled', () => {
-    installBanner.classList.add('hidden');
+    installBtn.classList.add('hidden');
     deferredPrompt = null;
   });
 
   function isStandalone() {
     return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   }
+  if (isStandalone()) installBtn.classList.add('hidden');
+
   /* ---------------------------------------------------------
      14. SERVICE WORKER REGISTRATION
   --------------------------------------------------------- */
